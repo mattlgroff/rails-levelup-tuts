@@ -6,6 +6,12 @@
 rails new eventz -j esbuild --css tailwindcss -d postgresql
 ```
 
+Run postgres docker container
+```bash
+docker run -d --name eventz -p 5432:5432 -e POSTGRES_PASSWORD=mysecretpassword -e POSTGRES_DB=eventz postgres
+```
+
+
 Start your dev server
 
 ```bash
@@ -337,4 +343,95 @@ Notice how it doesn't use `_navbar` but just `navbar`. This is because Rails kno
 You can think of `partials` kind of like a re-usable component. You can use them in multiple places and they are a great way to keep your code DRY.
 
 
-## Flash Messages and how to send notifications to our users
+## [Flash Messages and how to send notifications to our users](https://dev.to/phawk/flash-messages-with-hotwire-2o15)
+We'll use a Partial for our flashes as well. Let's make a new file: `app/views/shared/_flashes.html.erb`
+
+```html
+<% flash.each do |key, value| %>
+  <div data-controller="flash" class="flex items-center fixed top-5 left-1/2 transform -translate-x-1/2  <%= classes_for_flash(key) %> py-3 px-5 rounded-lg">
+    <div class="mr-4"><%= value %></div>
+
+    <button type="button" data-action="flash#dismiss">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  </div>
+<% end %>
+```
+
+We'll use a helper method to add some classes to our flash messages based on the type of message. Let's make a new file: `app/helpers/flash_helper.rb` or use `rails g helper flash`
+
+
+```ruby
+module FlashHelper
+  def classes_for_flash(flash_key)
+    case flash_key.to_sym
+    when :error
+      "bg-red-100 text-red-700"
+    else
+      "bg-blue-100 text-blue-700"
+    end
+  end
+end
+```
+
+Make a javascript controller for our flash messages: `app/javascript/controllers/flash_controller.js` this will allow us to dismiss the flash message after a few seconds or when the user clicks the X button. This is using [Hotwire Stimulus](https://stimulus.hotwired.dev/handbook/installing).
+
+```js
+import { Controller } from "@hotwired/stimulus";
+
+export default class extends Controller {
+  connect() {
+    setTimeout(() => {
+      this.dismiss();
+    }, 5000);
+  }
+
+  dismiss() {
+    this.element.remove();
+  }
+}
+```
+
+Run the a rake script to update our manifest so that this flash controller is included in our application: `bin/rails webpacker:install:stimulus`
+
+```bash
+rake stimulus:manifest:update
+```
+
+Let's add our flashes to our layout right under the navbar: `app/views/layouts/application.html.erb`
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Eventz</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+    <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
+  </head>
+
+  <body>
+    <%= render "shared/navbar" %>
+    <%= render 'shared/flashes' %>
+    <%= yield %>
+  </body>
+</html>
+```
+
+Let's make a flash notice in our AboutController's index action: `app/controllers/about_controller.rb`
+
+```ruby
+class AboutController < ApplicationController
+  def index
+    flash[:notice] = "Your profile has been updated."
+  end
+end
+```
+
+Now when we go to `http://localhost:3000/about` we should see our flash message.
+
